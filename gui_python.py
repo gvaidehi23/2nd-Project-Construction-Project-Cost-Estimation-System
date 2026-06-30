@@ -3,10 +3,16 @@ import numpy as np
 import pandas as pd
 import pickle
 
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import make_column_transformer
+from sklearn.pipeline import make_pipeline
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score
+from sklearn.ensemble import RandomForestRegressor
+
 st.title("Construction Project Cost Estimation System")
 
-# Load model pipeline
-pipe = pickle.load(open("pipe.pkl", "rb"))
 
 # Load dataset
 df = pd.read_csv("final_data.csv")
@@ -142,6 +148,10 @@ if st.sidebar.button("Predict Cost"):
     myinput = [[item_id,project_id,category,sub_category,item_name,unit,quantity,rate_per_unit]]           # item_id (if not used in model)                                                                                               
     columns = ['item_id','project_id','category','sub_category','item_name','unit','quantity','rate_per_unit_inr']
     myinput = pd.DataFrame(myinput,columns=columns)
+
+    
+    # Load model pipeline
+    pipe = pickle.load(open("pipe.pkl", "rb"))
     result = pipe.predict(myinput)
 
    
@@ -180,8 +190,33 @@ if st.sidebar.button("Predict Cost"):
     )
 
 
+if st.button("Train Model"):
+    
+    df = pd.read_csv('cleaned_data.csv')
+    X = df[['category', 'sub_category', 'item_name', 'unit', 'quantity', 'rate_per_unit_inr']]
+    y = df[['amount_inr']]
+    ohe = OneHotEncoder()
+    ohe.fit(df[['category', 'sub_category', 'item_name', 'unit']])
+    ct = make_column_transformer((OneHotEncoder(handle_unknown = 'ignore', sparse_output=False),['category', 'sub_category', 'item_name', 'unit']), remainder = 'passthrough')
+    model = RandomForestRegressor(n_estimators=100, random_state=42, n_jobs=-1)
+    pipe = make_pipeline(ct, model)
+    scores = []
+    for i in range (1, 101):
+        x_train, x_test, y_train, y_test = train_test_split(X, y, test_size = 0.1, random_state = i)
+        pipe.fit(x_train, y_train)
+        y_pred = pipe.predict(x_test)   
+        y_pred = pd.DataFrame(data = y_pred, columns = ['Predicted_price'])
+        result = pd.concat([y_test.reset_index(drop = True), y_pred], axis = 1)
+        score = r2_score(result['amount_inr'], result['Predicted_price'])
+        scores.append(score)
 
+    index = np.argmax(scores)
+    X_train, x_test, y_train, y_test = train_test_split(X,y,test_size = 0.1, random_state = index)
+    pipe.fit(X_train, y_train)
 
+    pickle.dump(pipe, open('pipe.pkl','wb+'))
+
+    st.success("Pipe done")
 
 
 
